@@ -13,19 +13,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ✅ FINAL FIX — Import stealth correctly
-try:
-    from playwright_stealth import stealth_sync
-    logger.info("✅ playwright_stealth imported successfully")
-except ImportError:
-    logger.warning("⚠️ playwright_stealth not found, attempting alternative import")
-    try:
-        from playwright_stealth import stealth
-        stealth_sync = stealth
-    except ImportError:
-        logger.error("❌ Cannot import stealth plugin - will continue without it")
-        stealth_sync = None
-
 # ⚠️ ALL SET IN GITHUB SECRETS — NEVER WRITE HERE!
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -49,8 +36,8 @@ DELAY_EXTRA_LONG = (3, 5)
 # ✅ Timeout Constants (in milliseconds) — INCREASED for slow website
 TIMEOUT_SHORT = 5000
 TIMEOUT_MEDIUM = 10000
-TIMEOUT_LONG = 60000  # ✅ INCREASED from 30000ms to 60000ms
-TIMEOUT_EXTRA_LONG = 90000  # ✅ NEW: For initial page load
+TIMEOUT_LONG = 60000  # INCREASED from 30000ms to 60000ms
+TIMEOUT_EXTRA_LONG = 90000  # For initial page load
 
 # ✅ Messages to check for no appointments
 NO_CITAS_PHRASES = [
@@ -93,7 +80,12 @@ def check_appointments() -> Dict[str, any]:
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+            args=[
+                "--no-sandbox", 
+                "--disable-dev-shm-usage", 
+                "--disable-blink-features=AutomationControlled",
+                "--disable-extensions"
+            ]
         )
 
         ctx_options = {
@@ -102,6 +94,7 @@ def check_appointments() -> Dict[str, any]:
             "locale": "es-ES",
             "timezone_id": "Europe/Madrid",
             "extra_http_headers": {"Accept-Language": "es-ES,es;q=0.9,en;q=0.8"},
+            "ignore_https_errors": True
         }
         if PROXY_SERVER:
             ctx_options["proxy"] = {"server": PROXY_SERVER}
@@ -110,15 +103,7 @@ def check_appointments() -> Dict[str, any]:
         context = browser.new_context(**ctx_options)
         page = context.new_page()
         
-        # ✅ Apply stealth if available
-        if stealth_sync:
-            try:
-                stealth_sync(page)
-                logger.info("✅ Stealth mode applied")
-            except Exception as e:
-                logger.warning(f"⚠️ Stealth mode failed: {e}")
-        else:
-            logger.warning("⚠️ Stealth mode not available, continuing without it")
+        logger.info("✅ Browser initialized (stealth mode not required)")
 
         try:
             # ==================================================
