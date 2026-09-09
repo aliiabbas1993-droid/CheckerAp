@@ -1,8 +1,17 @@
 import os
 import time
 import random
+import logging
+from typing import Dict
 import requests
 from playwright.sync_api import sync_playwright
+
+# ✅ Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ✅ FINAL FIX — Correct import name for ALL versions!
 try:
@@ -24,23 +33,59 @@ FULL_NAME = os.getenv("FULL_NAME")
 NIE_NUMBER = os.getenv("NIE_NUMBER")
 NATIONALITY = os.getenv("NATIONALITY")
 
+# ✅ Base Configuration
 BASE_URL = "https://icp.administracionelectronica.gob.es/icpplustieb/index"
 PROVINCIA = "Barcelona"
 OFICINA = "Cualquier oficina"
 TRAMITE_TEXT = "POLICÍA-TOMA DE HUELLAS (EXPEDICIÓN DE TARJETA) INICIAL, RENOVACIÓN, DUPLICADO Y LEY 14/2013"
 
-def send_telegram_alert(message):
+# ✅ Delay Constants (in seconds)
+DELAY_SHORT = (0.5, 1.5)
+DELAY_MEDIUM = (1, 2)
+DELAY_LONG = (2, 4)
+DELAY_EXTRA_LONG = (3, 5)
+
+# ✅ Timeout Constants (in milliseconds)
+TIMEOUT_SHORT = 5000
+TIMEOUT_MEDIUM = 10000
+TIMEOUT_LONG = 30000
+
+# ✅ Messages to check for no appointments
+NO_CITAS_PHRASES = [
+    "no hay citas disponibles",
+    "no existen citas",
+    "agotado",
+    "su sesión ha caducado",
+    "no hay citas en este momento"
+]
+
+# ✅ Messages to check for available appointments
+HAY_CITAS_PHRASES = [
+    "seleccione cita",
+    "seleccione fecha",
+    "seleccione la hora",
+    "citas disponibles",
+    "elige una oficina",
+    "pulse continuar para seleccionar cita",
+    "siguiente"
+]
+
+
+def send_telegram_alert(message: str) -> None:
+    """Send alert message via Telegram bot"""
     try:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             params={"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"},
             timeout=15
         )
-        print("✅ Telegram alert sent")
-    except Exception as e:
-        print(f"❌ Telegram error: {e}")
+        logger.info("✅ Telegram alert sent")
+    except requests.RequestException as e:
+        logger.error(f"❌ Telegram error: {e}")
 
-def check_appointments():
+
+def check_appointments() -> Dict[str, any]:
+    """Check for available appointments on the Spanish administration website"""
     results = {"found": False, "message": "", "error": None}
     
     with sync_playwright() as p:
@@ -58,7 +103,7 @@ def check_appointments():
         }
         if PROXY_SERVER:
             ctx_options["proxy"] = {"server": PROXY_SERVER}
-            print("🌐 Proxy enabled")
+            logger.info("🌐 Proxy enabled")
 
         context = browser.new_context(**ctx_options)
         page = context.new_page()
@@ -66,144 +111,135 @@ def check_appointments():
         # ✅ Apply stealth — works with the correct function name now!
         stealth_sync(page)
 
-        # ==================================================
-        # STEP 1: Select Province
-        # ==================================================
-        print("📍 Step 1/5 — Province...")
-        page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
-        time.sleep(random.uniform(2, 4))
-        page.select_option('select', has_text=PROVINCIA, timeout=5000)
-        time.sleep(random.uniform(1, 2))
-        page.click("input[type='submit'][value='Aceptar']", timeout=5000)
-        page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(random.uniform(2, 3))
-
-        # ==================================================
-        # STEP 2: Select Office & Trámite
-        # ==================================================
-        print("🏢 Step 2/5 — Office & Procedure...")
         try:
-            page.select_option('select', has_text=OFICINA, timeout=5000)
-            time.sleep(random.uniform(1, 2))
-        except: pass
-        page.select_option('select', has_text=TRAMITE_TEXT, timeout=5000)
-        time.sleep(random.uniform(1, 2))
-        page.click("input[type='submit'][value='Aceptar']", timeout=5000)
-        page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(random.uniform(2, 3))
+            # ==================================================
+            # STEP 1: Select Province
+            # ==================================================
+            logger.info("📍 Step 1/5 — Province...")
+            page.goto(BASE_URL, timeout=TIMEOUT_LONG, wait_until="domcontentloaded")
+            time.sleep(random.uniform(*DELAY_MEDIUM))
+            page.select_option('select', has_text=PROVINCIA, timeout=TIMEOUT_SHORT)
+            time.sleep(random.uniform(*DELAY_MEDIUM))
+            page.click("input[type='submit'][value='Aceptar']", timeout=TIMEOUT_SHORT)
+            page.wait_for_load_state("networkidle", timeout=TIMEOUT_LONG)
+            time.sleep(random.uniform(*DELAY_LONG))
 
-        # ==================================================
-        # STEP 3: Click "Continuar sin clave" ✅
-        # ==================================================
-        print("📄 Step 3/5 — Clicking 'Continuar sin clave'...")
-        try:
-            page.click("input[type='submit'][value='Continuar sin clave']", timeout=10000)
-            page.wait_for_load_state("networkidle", timeout=30000)
-            time.sleep(random.uniform(2, 4))
-        except Exception as e:
-            print(f"⚠️ 'Continuar sin clave' not found, trying alternatives: {e}")
+            # ==================================================
+            # STEP 2: Select Office & Trámite
+            # ==================================================
+            logger.info("🏢 Step 2/5 — Office & Procedure...")
             try:
-                page.click("input[type='submit'][value='Entrar']", timeout=5000)
-                page.wait_for_load_state("networkidle", timeout=30000)
-            except:
+                page.select_option('select', has_text=OFICINA, timeout=TIMEOUT_SHORT)
+                time.sleep(random.uniform(*DELAY_MEDIUM))
+            except (TimeoutError, Exception) as e:
+                logger.warning(f"⚠️ Office selection failed (continuing): {e}")
+            
+            page.select_option('select', has_text=TRAMITE_TEXT, timeout=TIMEOUT_SHORT)
+            time.sleep(random.uniform(*DELAY_MEDIUM))
+            page.click("input[type='submit'][value='Aceptar']", timeout=TIMEOUT_SHORT)
+            page.wait_for_load_state("networkidle", timeout=TIMEOUT_LONG)
+            time.sleep(random.uniform(*DELAY_LONG))
+
+            # ==================================================
+            # STEP 3: Click "Continuar sin clave" ✅
+            # ==================================================
+            logger.info("📄 Step 3/5 — Clicking 'Continuar sin clave'...")
+            try:
+                page.click("input[type='submit'][value='Continuar sin clave']", timeout=TIMEOUT_MEDIUM)
+                page.wait_for_load_state("networkidle", timeout=TIMEOUT_LONG)
+                time.sleep(random.uniform(*DELAY_LONG))
+            except (TimeoutError, Exception) as e:
+                logger.warning(f"⚠️ 'Continuar sin clave' not found, trying alternatives: {e}")
                 try:
-                    page.click("button:has-text('Continuar sin clave')", timeout=5000)
-                except Exception as e2:
-                    print(f"⚠️ No terms button found — may have been skipped: {e2}")
+                    page.click("input[type='submit'][value='Entrar']", timeout=TIMEOUT_SHORT)
+                    page.wait_for_load_state("networkidle", timeout=TIMEOUT_LONG)
+                except (TimeoutError, Exception):
+                    try:
+                        page.click("button:has-text('Continuar sin clave')", timeout=TIMEOUT_SHORT)
+                    except (TimeoutError, Exception) as e2:
+                        logger.warning(f"⚠️ No terms button found — may have been skipped: {e2}")
 
-        # ==================================================
-        # STEP 4: PERSONAL DATA — NIE, Name, Nationality
-        # ==================================================
-        print("👤 Step 4/5 — Entering personal data...")
-        
-        # Select Document Type = NIE
-        try:
-            page.select_option('select[name="tipoDocumento"]', label="N.I.E", timeout=5000)
-            time.sleep(random.uniform(0.5, 1.5))
-        except:
+            # ==================================================
+            # STEP 4: PERSONAL DATA — NIE, Name, Nationality
+            # ==================================================
+            logger.info("👤 Step 4/5 — Entering personal data...")
+            
+            # Select Document Type = NIE
             try:
-                page.select_option('select#tipoDocumento', label="N.I.E", timeout=5000)
-            except Exception as e:
-                results["error"] = f"Document type select failed: {e}"
+                page.select_option('select[name="tipoDocumento"]', label="N.I.E", timeout=TIMEOUT_SHORT)
+                time.sleep(random.uniform(*DELAY_SHORT))
+            except (TimeoutError, Exception):
+                try:
+                    page.select_option('select#tipoDocumento', label="N.I.E", timeout=TIMEOUT_SHORT)
+                except (TimeoutError, Exception) as e:
+                    results["error"] = f"Document type select failed: {e}"
+                    logger.error(results["error"])
+                    browser.close()
+                    return results
+
+            # Enter NIE Number
+            try:
+                nie_input = page.locator('input[name="numeroDocumento"]')
+                nie_input.fill(NIE_NUMBER)
+                time.sleep(random.uniform(*DELAY_SHORT))
+            except (TimeoutError, Exception):
+                try:
+                    page.fill('input#numeroDocumento', NIE_NUMBER)
+                except (TimeoutError, Exception) as e:
+                    results["error"] = f"NIE input failed: {e}"
+                    logger.error(results["error"])
+                    browser.close()
+                    return results
+
+            # Enter Full Name
+            try:
+                name_input = page.locator('input[name="nombre"]')
+                name_input.fill(FULL_NAME)
+                time.sleep(random.uniform(*DELAY_SHORT))
+            except (TimeoutError, Exception):
+                try:
+                    page.fill('input#nombre', FULL_NAME)
+                except (TimeoutError, Exception) as e:
+                    results["error"] = f"Name input failed: {e}"
+                    logger.error(results["error"])
+                    browser.close()
+                    return results
+
+            # Select Nationality
+            try:
+                page.select_option('select[name="nacionalidad"]', label=NATIONALITY, timeout=TIMEOUT_SHORT)
+                time.sleep(random.uniform(*DELAY_MEDIUM))
+            except (TimeoutError, Exception):
+                try:
+                    page.select_option('select#nacionalidad', label=NATIONALITY, timeout=TIMEOUT_SHORT)
+                except (TimeoutError, Exception) as e:
+                    results["error"] = f"Nationality select failed: {e}"
+                    logger.error(results["error"])
+                    browser.close()
+                    return results
+
+            # Submit Personal Data → Goes ALL the way to availability page! ✅
+            try:
+                page.click("input[type='submit'][value='Aceptar']", timeout=TIMEOUT_SHORT)
+                page.wait_for_load_state("networkidle", timeout=TIMEOUT_LONG)
+                time.sleep(random.uniform(*DELAY_EXTRA_LONG))
+            except (TimeoutError, Exception) as e:
+                results["error"] = f"Submit personal data failed: {e}"
+                logger.error(results["error"])
                 browser.close()
                 return results
 
-        # Enter NIE Number
-        try:
-            nie_input = page.locator('input[name="numeroDocumento"]')
-            nie_input.fill(NIE_NUMBER)
-            time.sleep(random.uniform(0.5, 1))
-        except:
-            try:
-                page.fill('input#numeroDocumento', NIE_NUMBER)
-            except Exception as e:
-                results["error"] = f"NIE input failed: {e}"
-                browser.close()
-                return results
+            # ==================================================
+            # STEP 5: Check for Appointments — Availability Page! 🎯
+            # ==================================================
+            logger.info("🔍 Step 5/5 — Checking availability page...")
+            content = page.content().lower()
 
-        # Enter Full Name
-        try:
-            name_input = page.locator('input[name="nombre"]')
-            name_input.fill(FULL_NAME)
-            time.sleep(random.uniform(0.5, 1))
-        except:
-            try:
-                page.fill('input#nombre', FULL_NAME)
-            except Exception as e:
-                results["error"] = f"Name input failed: {e}"
-                browser.close()
-                return results
-
-        # Select Nationality
-        try:
-            page.select_option('select[name="nacionalidad"]', label=NATIONALITY, timeout=5000)
-            time.sleep(random.uniform(1, 2))
-        except:
-            try:
-                page.select_option('select#nacionalidad', label=NATIONALITY, timeout=5000)
-            except Exception as e:
-                results["error"] = f"Nationality select failed: {e}"
-                browser.close()
-                return results
-
-        # Submit Personal Data → Goes ALL the way to availability page! ✅
-        try:
-            page.click("input[type='submit'][value='Aceptar']", timeout=5000)
-            page.wait_for_load_state("networkidle", timeout=30000)
-            time.sleep(random.uniform(3, 5))
-        except Exception as e:
-            results["error"] = f"Submit personal data failed: {e}"
-            browser.close()
-            return results
-
-        # ==================================================
-        # STEP 5: Check for Appointments — Availability Page! 🎯
-        # ==================================================
-        print("🔍 Step 5/5 — Checking availability page...")
-        content = page.content().lower()
-
-        no_citas = [
-            "no hay citas disponibles",
-            "no existen citas",
-            "agotado",
-            "su sesión ha caducado",
-            "no hay citas en este momento"
-        ]
-        hay_citas = [
-            "seleccione cita",
-            "seleccione fecha",
-            "seleccione la hora",
-            "citas disponibles",
-            "elige una oficina",
-            "pulse continuar para seleccionar cita",
-            "siguiente"
-        ]
-
-        if any(phrase in content for phrase in no_citas):
-            results["message"] = "❌ No appointments available"
-        elif any(phrase in content for phrase in hay_citas):
-            results["found"] = True
-            results["message"] = f"""
+            if any(phrase in content for phrase in NO_CITAS_PHRASES):
+                results["message"] = "❌ No appointments available"
+            elif any(phrase in content for phrase in HAY_CITAS_PHRASES):
+                results["found"] = True
+                results["message"] = f"""
 🚀 <b>¡CITA DISPONIBLE!</b> 🎉
 
 📍 Provincia: {PROVINCIA}
@@ -213,31 +249,42 @@ def check_appointments():
 
 👉 ¡VE A RESERVAR AHORA!
 {BASE_URL}
-            """.strip()
-        else:
-            results["message"] = "⚠️ Page loaded — status unclear"
-            page.screenshot(path=f"debug_{time.strftime('%Y%m%d_%H%M')}.png")
+                """.strip()
+            else:
+                results["message"] = "⚠️ Page loaded — status unclear"
+                debug_filename = f"debug_{time.strftime('%Y%m%d_%H%M')}.png"
+                page.screenshot(path=debug_filename)
+                logger.warning(f"Screenshot saved to {debug_filename}")
 
-        browser.close()
+        except Exception as e:
+            results["error"] = f"Unexpected error during check: {e}"
+            logger.error(results["error"])
+        finally:
+            browser.close()
+            logger.info("🔒 Browser closed")
+
         return results
 
-# ---------------- MAIN ----------------
+
+# ============================================================
+# MAIN EXECUTION
+# ============================================================
 if __name__ == "__main__":
-    print("=" * 55)
-    print("🤖 CITA CHECKER STARTED — BARCELONA HUELLAS")
-    print(f"👤 NIE: {NIE_NUMBER} | Name: {FULL_NAME}")
-    print(f"🕐 Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 55)
+    logger.info("=" * 55)
+    logger.info("🤖 CITA CHECKER STARTED — BARCELONA HUELLAS")
+    logger.info(f"👤 NIE: {NIE_NUMBER} | Name: {FULL_NAME}")
+    logger.info(f"🕐 Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 55)
     
     result = check_appointments()
     
     if result["error"]:
-        print(f"❌ ERROR: {result['error']}")
+        logger.error(f"❌ ERROR: {result['error']}")
         send_telegram_alert(f"⚠️ ERROR:\n{result['error']}")
     elif result["found"]:
-        print("🎉 CITAS FOUND!!! ALERT SENT!")
+        logger.info("🎉 CITAS FOUND!!! ALERT SENT!")
         send_telegram_alert(result["message"])
     else:
-        print(result["message"])
+        logger.info(result["message"])
     
-    print("✅ Check finished")
+    logger.info("✅ Check finished")
