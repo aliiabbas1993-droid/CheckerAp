@@ -1,0 +1,37 @@
+name: Huella Cita Checker
+run-name: Checking fingerprint appointments...
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Check EVERY 5 MINUTES
+  workflow_dispatch:  # Allow manual run
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright-stealth  # ✅ EXPLICIT INSTALL
+          playwright install --with-deps
+
+      - name: Run Checker
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
+          FULL_NAME: ${{ secrets.FULL_NAME }}
+          NIE_NUMBER: ${{ secrets.NIE_NUMBER }}
+          NATIONALITY: ${{ secrets.NATIONALITY }}
+        run: python cita_checker.py
