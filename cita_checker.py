@@ -46,10 +46,11 @@ DELAY_MEDIUM = (1, 2)
 DELAY_LONG = (2, 4)
 DELAY_EXTRA_LONG = (3, 5)
 
-# ✅ Timeout Constants (in milliseconds)
+# ✅ Timeout Constants (in milliseconds) — INCREASED for slow website
 TIMEOUT_SHORT = 5000
 TIMEOUT_MEDIUM = 10000
-TIMEOUT_LONG = 30000
+TIMEOUT_LONG = 60000  # ✅ INCREASED from 30000ms to 60000ms
+TIMEOUT_EXTRA_LONG = 90000  # ✅ NEW: For initial page load
 
 # ✅ Messages to check for no appointments
 NO_CITAS_PHRASES = [
@@ -124,7 +125,7 @@ def check_appointments() -> Dict[str, any]:
             # STEP 1: Select Province
             # ==================================================
             logger.info("📍 Step 1/5 — Province...")
-            page.goto(BASE_URL, timeout=TIMEOUT_LONG, wait_until="domcontentloaded")
+            page.goto(BASE_URL, timeout=TIMEOUT_EXTRA_LONG, wait_until="domcontentloaded")
             time.sleep(random.uniform(*DELAY_MEDIUM))
             page.select_option('select', has_text=PROVINCIA, timeout=TIMEOUT_SHORT)
             time.sleep(random.uniform(*DELAY_MEDIUM))
