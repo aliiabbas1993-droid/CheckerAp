@@ -13,17 +13,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ✅ FINAL FIX — Correct import name for ALL versions!
+# ✅ FINAL FIX — Import stealth correctly
 try:
-    # Newer versions use just "stealth"
-    from playwright_stealth import stealth as stealth_sync
+    from playwright_stealth import stealth_sync
+    logger.info("✅ playwright_stealth imported successfully")
 except ImportError:
+    logger.warning("⚠️ playwright_stealth not found, attempting alternative import")
     try:
-        # Older version
-        from playwright_stealth import stealth_sync
+        from playwright_stealth import stealth
+        stealth_sync = stealth
     except ImportError:
-        # Alternative name
-        from playwright_stealth import sync_stealth as stealth_sync
+        logger.error("❌ Cannot import stealth plugin - will continue without it")
+        stealth_sync = None
 
 # ⚠️ ALL SET IN GITHUB SECRETS — NEVER WRITE HERE!
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -108,8 +109,15 @@ def check_appointments() -> Dict[str, any]:
         context = browser.new_context(**ctx_options)
         page = context.new_page()
         
-        # ✅ Apply stealth — works with the correct function name now!
-        stealth_sync(page)
+        # ✅ Apply stealth if available
+        if stealth_sync:
+            try:
+                stealth_sync(page)
+                logger.info("✅ Stealth mode applied")
+            except Exception as e:
+                logger.warning(f"⚠️ Stealth mode failed: {e}")
+        else:
+            logger.warning("⚠️ Stealth mode not available, continuing without it")
 
         try:
             # ==================================================
