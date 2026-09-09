@@ -33,11 +33,11 @@ DELAY_MEDIUM = (1, 2)
 DELAY_LONG = (2, 4)
 DELAY_EXTRA_LONG = (3, 5)
 
-# ✅ Timeout Constants (in milliseconds) — INCREASED for slow website
+# ✅ Timeout Constants (in milliseconds) — INCREASED for extremely slow website
 TIMEOUT_SHORT = 5000
 TIMEOUT_MEDIUM = 10000
-TIMEOUT_LONG = 60000  # INCREASED from 30000ms to 60000ms
-TIMEOUT_EXTRA_LONG = 90000  # For initial page load
+TIMEOUT_LONG = 60000
+TIMEOUT_EXTRA_LONG = 120000  # ⬆️ INCREASED to 120 seconds (2 minutes) for initial page load
 
 # ✅ Messages to check for no appointments
 NO_CITAS_PHRASES = [
