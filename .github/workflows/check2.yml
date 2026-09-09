@@ -1,0 +1,43 @@
+name: Inspect TIE Website
+
+run-name: Inspecting current government appointment site
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Inspect government website
+        run: |
+          python inspect_site.py
+
+      - name: Upload website capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: government-site-capture
+          path: site_capture/
+          retention-days: 7
