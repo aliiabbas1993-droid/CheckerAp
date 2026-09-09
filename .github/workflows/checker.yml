@@ -5,6 +5,7 @@ run-name: Checking Barcelona TIE appointments
 on:
   schedule:
     - cron: "*/15 * * * *"
+
   workflow_dispatch:
 
 permissions:
@@ -17,39 +18,78 @@ jobs:
 
     steps:
 
+      # ======================================================
+      # CHECKOUT
+      # ======================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # ======================================================
+      # PYTHON
+      # ======================================================
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+
+      # ======================================================
+      # INSTALL PYTHON PACKAGES
+      # ======================================================
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+
+      # ======================================================
+      # INSTALL PLAYWRIGHT
+      # ======================================================
+
       - name: Install Playwright Chromium
         run: |
           playwright install --with-deps chromium
 
-      # -----------------------------------------------
-      # IMPORTANT DIAGNOSTIC
-      # -----------------------------------------------
+
+      # ======================================================
+      # NETWORK DIAGNOSTICS
+      #
+      # We test BOTH:
+      #
+      # 1. Old ICP host used by your existing checker
+      # 2. Current official Cita Previa host
+      #
+      # The current official service is:
+      # https://citaprevia.administracionelectronica.gob.es/icpplus/citar
+      # ======================================================
 
       - name: Test government website connectivity
         run: |
-          echo "========================================"
-          echo "DNS"
-          echo "========================================"
+
+          echo ""
+          echo "===================================================="
+          echo "DNS TEST - OLD HOST"
+          echo "===================================================="
 
           getent hosts icp.administracionelectronica.gob.es || true
 
+
           echo ""
-          echo "========================================"
-          echo "IPv4 TEST"
-          echo "========================================"
+          echo "===================================================="
+          echo "DNS TEST - CURRENT HOST"
+          echo "===================================================="
+
+          getent hosts citaprevia.administracionelectronica.gob.es || true
+
+
+          echo ""
+          echo "===================================================="
+          echo "OLD ICP HOST - IPv4"
+          echo "===================================================="
 
           curl -4 -I \
             --connect-timeout 15 \
@@ -58,29 +98,60 @@ jobs:
             https://icp.administracionelectronica.gob.es/icpplustieb/index \
             || true
 
-          echo ""
-          echo "========================================"
-          echo "IPv6 TEST"
-          echo "========================================"
 
-          curl -6 -I \
+          echo ""
+          echo "===================================================="
+          echo "CURRENT CITA PREVIA HOST - IPv4"
+          echo "===================================================="
+
+          curl -4 -I \
             --connect-timeout 15 \
             --max-time 30 \
             -v \
-            https://icp.administracionelectronica.gob.es/icpplustieb/index \
+            https://citaprevia.administracionelectronica.gob.es/icpplus/citar \
             || true
 
-      # -----------------------------------------------
-      # CHECKER
-      # -----------------------------------------------
+
+          echo ""
+          echo "===================================================="
+          echo "CURRENT CITA PREVIA HOST - HTTPS TEST"
+          echo "===================================================="
+
+          curl -4 \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -L \
+            -sS \
+            -o /tmp/cita_previa.html \
+            -w "HTTP_STATUS=%{http_code}\nREMOTE_IP=%{remote_ip}\nTIME=%{time_total}s\n" \
+            https://citaprevia.administracionelectronica.gob.es/icpplus/citar \
+            || true
+
+
+          echo ""
+          echo "===================================================="
+          echo "CURRENT HOST RESPONSE PREVIEW"
+          echo "===================================================="
+
+          if [ -f /tmp/cita_previa.html ]; then
+            head -c 2000 /tmp/cita_previa.html || true
+          fi
+
+
+      # ======================================================
+      # RUN CHECKER
+      # ======================================================
 
       - name: Run appointment checker
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
           FULL_NAME: ${{ secrets.FULL_NAME }}
           NIE_NUMBER: ${{ secrets.NIE_NUMBER }}
           NATIONALITY: ${{ secrets.NATIONALITY }}
+
+          # 99 = any office
           OFFICE_VALUE: "99"
 
         run: |
