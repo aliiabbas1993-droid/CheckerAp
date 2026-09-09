@@ -30,7 +30,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
           FULL_NAME: ${{ secrets.FULL_NAME }}
           NIE_NUMBER: ${{ secrets.NIE_NUMBER }}
           NATIONALITY: ${{ secrets.NATIONALITY }}
