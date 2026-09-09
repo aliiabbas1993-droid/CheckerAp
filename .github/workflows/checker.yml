@@ -1,10 +1,14 @@
-name: Huella Cita Checker
-run-name: Checking fingerprint appointments...
+name: TIE Appointment Checker
+
+run-name: Checking Barcelona TIE appointments
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: "*/15 * * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -12,24 +16,72 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: |
           playwright install --with-deps chromium
 
-      - name: Run Checker
+      # -----------------------------------------------
+      # IMPORTANT DIAGNOSTIC
+      # -----------------------------------------------
+
+      - name: Test government website connectivity
+        run: |
+          echo "========================================"
+          echo "DNS"
+          echo "========================================"
+
+          getent hosts icp.administracionelectronica.gob.es || true
+
+          echo ""
+          echo "========================================"
+          echo "IPv4 TEST"
+          echo "========================================"
+
+          curl -4 -I \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -v \
+            https://icp.administracionelectronica.gob.es/icpplustieb/index \
+            || true
+
+          echo ""
+          echo "========================================"
+          echo "IPv6 TEST"
+          echo "========================================"
+
+          curl -6 -I \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -v \
+            https://icp.administracionelectronica.gob.es/icpplustieb/index \
+            || true
+
+      # -----------------------------------------------
+      # CHECKER
+      # -----------------------------------------------
+
+      - name: Run appointment checker
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FULL_NAME: ${{ secrets.FULL_NAME }}
           NIE_NUMBER: ${{ secrets.NIE_NUMBER }}
           NATIONALITY: ${{ secrets.NATIONALITY }}
-        run: python cita_checker.py
+          OFFICE_VALUE: "99"
+
+        run: |
+          python cita_checker.py
